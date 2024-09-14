@@ -1,0 +1,13 @@
+# Ignore everything
+*
+
+# Do not ignore directories (needed for the files inside to be considered)
+!*/
+
+# Do not ignore .c, .glsl, and .md files
+!*.c
+!*.glsl
+!*.md
+
+# Do not ignore the .gitignore file itself
+!.gitignore
