@@ -1,0 +1,1 @@
+-> Some of exercices and tests from differents books rewrited in C, for now it's "Computer Graphics Programming in OpenGL with C++"
