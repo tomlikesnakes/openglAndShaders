@@ -9,5 +9,7 @@
 !*.glsl
 !*.md
 
+!*/*.c
+!*/*.glsl
 # Do not ignore the .gitignore file itself
 !.gitignore
