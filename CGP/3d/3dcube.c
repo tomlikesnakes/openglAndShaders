@@ -1,39 +1,39 @@
+#include <cglm/cglm.h>
 #include "Utils.h"
 #include <math.h>
 #include <stdlib.h>
+#include <GL/glew.h>
+#include <GLFW/glfw3.h>
 
 #define numVAOs 1
 #define numVBOs 1
 
-
 float cameraX, cameraY, cameraZ;
-float cubeLocX, cubeLocY, cubeLocZ;
 GLuint renderingProgram;
 GLuint vao[numVAOs];
 GLuint vbo[numVBOs];
 
-// Allocate variables used in display() function, so that they won't need to be allocated during rendering
-//GLuint mvLoc, projLoc;
-int width, height, displayLoopi;
+// Allocate variables used in display() function
+int width, height;
 float aspect;
 float timeFactor;
 GLuint mvLoc, projLoc, tfLoc;
-float pMat[16], vMat[16], tMat[16], rMat[16], mMat[16], mvMat[16];
+mat4 pMat, vMat, mMat, mvMat;
 
 void setupVertices(void) {
     float vertexPositions[108] = {
-        -1.0f, 1.0f, -1.0f, -1.0f, -1.0f, -1.0f, 1.0f, -1.0f, -1.0f,
-        1.0f, -1.0f, -1.0f, 1.0f, 1.0f, -1.0f, -1.0f, 1.0f, -1.0f,
-        1.0f, -1.0f, -1.0f, 1.0f, -1.0f, 1.0f, 1.0f, 1.0f, -1.0f,
-        1.0f, -1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, -1.0f,
-        1.0f, -1.0f, 1.0f, -1.0f, -1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
-        -1.0f, -1.0f, 1.0f, -1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
-        -1.0f, -1.0f, 1.0f, -1.0f, -1.0f, -1.0f, -1.0f, 1.0f, 1.0f,
-        -1.0f, -1.0f, -1.0f, -1.0f, 1.0f, -1.0f, -1.0f, 1.0f, 1.0f,
-        -1.0f, -1.0f, 1.0f, 1.0f, -1.0f, 1.0f, 1.0f, -1.0f, -1.0f,
-        1.0f, -1.0f, -1.0f, -1.0f, -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,
-        -1.0f, 1.0f, -1.0f, 1.0f, 1.0f, -1.0f, 1.0f, 1.0f, 1.0f,
-        1.0f, 1.0f, 1.0f, -1.0f, 1.0f, 1.0f, -1.0f, 1.0f, -1.0f
+        -1.0f,  1.0f, -1.0f,  -1.0f, -1.0f, -1.0f,  1.0f, -1.0f, -1.0f,
+         1.0f, -1.0f, -1.0f,   1.0f,  1.0f, -1.0f, -1.0f,  1.0f, -1.0f,
+         1.0f, -1.0f, -1.0f,   1.0f, -1.0f,  1.0f,  1.0f,  1.0f, -1.0f,
+         1.0f, -1.0f,  1.0f,   1.0f,  1.0f,  1.0f,  1.0f,  1.0f, -1.0f,
+         1.0f, -1.0f,  1.0f,  -1.0f, -1.0f,  1.0f,  1.0f,  1.0f,  1.0f,
+        -1.0f, -1.0f,  1.0f,  -1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,
+        -1.0f, -1.0f,  1.0f,  -1.0f, -1.0f, -1.0f, -1.0f,  1.0f,  1.0f,
+        -1.0f, -1.0f, -1.0f,  -1.0f,  1.0f, -1.0f, -1.0f,  1.0f,  1.0f,
+        -1.0f, -1.0f,  1.0f,   1.0f, -1.0f,  1.0f,  1.0f, -1.0f, -1.0f,
+         1.0f, -1.0f, -1.0f,  -1.0f, -1.0f, -1.0f, -1.0f, -1.0f,  1.0f,
+        -1.0f,  1.0f, -1.0f,   1.0f,  1.0f, -1.0f,  1.0f,  1.0f,  1.0f,
+         1.0f,  1.0f,  1.0f,  -1.0f,  1.0f,  1.0f, -1.0f,  1.0f, -1.0f
     };
 
     glGenVertexArrays(numVAOs, vao);
@@ -45,66 +45,56 @@ void setupVertices(void) {
 
 void init(GLFWwindow* window) {
     renderingProgram = create_shader_program("shaders/vertShader.glsl", "shaders/fragShader.glsl");
-    // position the camera further down the positive Z axis (to see all of the cubes)
     cameraX = 0.0f; cameraY = 0.0f; cameraZ = 420.0f;
-
     setupVertices();
 }
 
-
 void display(GLFWwindow* window, double currentTime) {
-        glClear(GL_DEPTH_BUFFER_BIT);
-    glClearColor(0.0, 0.0, 0.0, 1.0);
-    glClear(GL_COLOR_BUFFER_BIT);
+    glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
     glUseProgram(renderingProgram);
 
-    // Get uniform locations for MV and projection matrices
+    // Get uniform locations
     mvLoc = glGetUniformLocation(renderingProgram, "v_matrix");
     projLoc = glGetUniformLocation(renderingProgram, "proj_matrix");
 
-    // Get framebuffer size and set the OpenGL viewport to match
+    // Get framebuffer size and set viewport
     glfwGetFramebufferSize(window, &width, &height);
-    //glViewport(0, 0, width, height);
+        glViewport(0, 0, width, height);  // Set the viewport to cover the entire window
 
-    // Calculate aspect ratio and set perspective projection
     aspect = (float)width / (float)height;
-    utils_matrix_perspective(pMat, 1.0472f, aspect, 0.1f, 1000.0f);  // Adjust FOV to 45 degrees
 
-    // Move the camera back further to ensure cubes are visible
-    cameraZ = 420.0f;
+    // Set up perspective matrix using cglm
+    glm_perspective(glm_rad(45.0f), aspect, 0.1f, 1000.0f, pMat);
 
-    // Initialize identity matrices for view, model, and combined model-view
-    utils_matrix_identity(vMat);
-    utils_matrix_translate(vMat, -cameraX, -cameraY, -cameraZ);
+    // Set up view matrix: translate the camera position
+    glm_mat4_identity(vMat);
+    glm_translate(vMat, (vec3){-cameraX, -cameraY, -cameraZ});
 
-
-
-    // Copy perspective and model-view matrices to corresponding uniform variables
-    glUniformMatrix4fv(mvLoc, 1, GL_FALSE, (float*)mvMat);
+    // Set uniforms
     glUniformMatrix4fv(projLoc, 1, GL_FALSE, (float*)pMat);
+    glUniformMatrix4fv(mvLoc, 1, GL_FALSE, (float*)vMat);
 
-    timeFactor = ((float)currentTime);
+    // Set time factor for animation
+    timeFactor = (float)currentTime;
     tfLoc = glGetUniformLocation(renderingProgram, "tf");
-    glUniform1f(tfLoc, (float)timeFactor);
+    glUniform1f(tfLoc, timeFactor);
 
-    // Associate VBO with the corresponding vertex attribute in the vertex shader
+    // Bind VBO and set up vertex attribute
     glBindBuffer(GL_ARRAY_BUFFER, vbo[0]);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
     glEnableVertexAttribArray(0);
 
-    // Enable depth testing and render the cube
+    // Enable depth testing and render the cubes
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
     glDrawArraysInstanced(GL_TRIANGLES, 0, 36, 100000);
 }
 
-
-
 int main(void) {
     if (!glfwInit()) { exit(EXIT_FAILURE); }
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-    GLFWwindow* window = glfwCreateWindow(600, 600, "Chapter 4 - program 1", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(600, 600, "3D Cubes with cglm", NULL, NULL);
     glfwMakeContextCurrent(window);
     if (glewInit() != GLEW_OK) { exit(EXIT_FAILURE); }
     glfwSwapInterval(1);
@@ -121,3 +111,4 @@ int main(void) {
     glfwTerminate();
     exit(EXIT_SUCCESS);
 }
+
