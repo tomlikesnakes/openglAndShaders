@@ -3,7 +3,8 @@
 #include <stdlib.h>
 
 #define numVAOs 1
-#define numVBOs 2
+#define numVBOs 1
+
 
 float cameraX, cameraY, cameraZ;
 float cubeLocX, cubeLocY, cubeLocZ;
@@ -12,10 +13,12 @@ GLuint vao[numVAOs];
 GLuint vbo[numVBOs];
 
 // Allocate variables used in display() function, so that they won't need to be allocated during rendering
-GLuint mvLoc, projLoc;
-int width, height;
+//GLuint mvLoc, projLoc;
+int width, height, displayLoopi;
 float aspect;
-float pMat[16], vMat[16], mMat[16], mvMat[16];
+float timeFactor;
+GLuint mvLoc, projLoc, tfLoc;
+float pMat[16], vMat[16], tMat[16], rMat[16], mMat[16], mvMat[16];
 
 void setupVertices(void) {
     float vertexPositions[108] = {
@@ -42,75 +45,59 @@ void setupVertices(void) {
 
 void init(GLFWwindow* window) {
     renderingProgram = create_shader_program("shaders/vertShader.glsl", "shaders/fragShader.glsl");
-    cameraX = 0.0f; cameraY = 0.0f; cameraZ = 8.0f;
-    cubeLocX = 0.0f; cubeLocY = -2.0f; cubeLocZ = 0.0f;  // shift down Y to reveal perspective
+    // position the camera further down the positive Z axis (to see all of the cubes)
+    cameraX = 0.0f; cameraY = 0.0f; cameraZ = 420.0f;
+
     setupVertices();
 }
 
+
 void display(GLFWwindow* window, double currentTime) {
-    // Clear buffers
-    glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
+        glClear(GL_DEPTH_BUFFER_BIT);
+    glClearColor(0.0, 0.0, 0.0, 1.0);
+    glClear(GL_COLOR_BUFFER_BIT);
     glUseProgram(renderingProgram);
 
     // Get uniform locations for MV and projection matrices
-    mvLoc = glGetUniformLocation(renderingProgram, "mv_matrix");
+    mvLoc = glGetUniformLocation(renderingProgram, "v_matrix");
     projLoc = glGetUniformLocation(renderingProgram, "proj_matrix");
 
-       // Get the framebuffer size (instead of window size) to handle high-DPI monitors and i3 properly
+    // Get framebuffer size and set the OpenGL viewport to match
     glfwGetFramebufferSize(window, &width, &height);
-    
-    // Ensure the OpenGL viewport matches the framebuffer size
-    glViewport(0, 0, width, height);  // Set the viewport to cover the entire window
-
-    glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
-    glUseProgram(renderingProgram);
+    //glViewport(0, 0, width, height);
 
     // Calculate aspect ratio and set perspective projection
     aspect = (float)width / (float)height;
+    utils_matrix_perspective(pMat, 1.0472f, aspect, 0.1f, 1000.0f);  // Adjust FOV to 45 degrees
 
-    // Adjust the field of view to ensure cubes fill more of the screen (you can tweak this value)
-    utils_matrix_perspective(pMat, 0.7854f, aspect, 0.1f, 1000.0f);  // 45 degrees FOV
+    // Move the camera back further to ensure cubes are visible
+    cameraZ = 420.0f;
 
-    // Move the camera further back to give the cubes more space
-    cameraZ = 30.0f;
+    // Initialize identity matrices for view, model, and combined model-view
+    utils_matrix_identity(vMat);
+    utils_matrix_translate(vMat, -cameraX, -cameraY, -cameraZ);
 
-    // Loop over 24 cubes and apply transformations
-    for (int i = 0; i < 48; i++) {
-        // Initialize identity matrices for view, model, and combined model-view
-        utils_matrix_identity(vMat);
-        utils_matrix_translate(vMat, -cameraX, -cameraY, -cameraZ);
 
-        // Translation based on currentTime and loop index i
-        utils_matrix_identity(mMat);  // Initialize model matrix to identity
-        utils_matrix_translate(mMat, 
-            sinf(0.35f * currentTime + i) * 10.0f,  // Increase translation factor for larger spread
-            cosf(0.52f * currentTime + i) * 10.0f,
-            sinf(0.7f * currentTime + i) * 10.0f
-        );
 
-        // Apply rotations to the model matrix (rotation based on currentTime)
-        utils_matrix_rotate(mMat, 1.75f * currentTime, 0.0f, 1.0f, 0.0f); // Y-axis rotation
-        utils_matrix_rotate(mMat, 1.75f * currentTime, 1.0f, 0.0f, 0.0f); // X-axis rotation
-        utils_matrix_rotate(mMat, 1.75f * currentTime, 0.0f, 0.0f, 1.0f); // Z-axis rotation
+    // Copy perspective and model-view matrices to corresponding uniform variables
+    glUniformMatrix4fv(mvLoc, 1, GL_FALSE, (float*)mvMat);
+    glUniformMatrix4fv(projLoc, 1, GL_FALSE, (float*)pMat);
 
-        // Multiply the view matrix (vMat) with the model matrix (mMat) to get the model-view matrix
-        utils_matrix_multiply(vMat, mMat, mvMat);
+    timeFactor = ((float)currentTime);
+    tfLoc = glGetUniformLocation(renderingProgram, "tf");
+    glUniform1f(tfLoc, (float)timeFactor);
 
-        // Copy perspective and model-view matrices to corresponding uniform variables
-        glUniformMatrix4fv(mvLoc, 1, GL_FALSE, (float*)mvMat);
-        glUniformMatrix4fv(projLoc, 1, GL_FALSE, (float*)pMat);
+    // Associate VBO with the corresponding vertex attribute in the vertex shader
+    glBindBuffer(GL_ARRAY_BUFFER, vbo[0]);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
+    glEnableVertexAttribArray(0);
 
-        // Associate VBO with the corresponding vertex attribute in the vertex shader
-        glBindBuffer(GL_ARRAY_BUFFER, vbo[0]);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
-        glEnableVertexAttribArray(0);
-
-        // Enable depth testing and render the cube
-        glEnable(GL_DEPTH_TEST);
-        glDepthFunc(GL_LEQUAL);
-        glDrawArrays(GL_TRIANGLES, 0, 36);
-    }
+    // Enable depth testing and render the cube
+    glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LEQUAL);
+    glDrawArraysInstanced(GL_TRIANGLES, 0, 36, 100000);
 }
+
 
 
 int main(void) {
