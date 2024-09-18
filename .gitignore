@@ -20,5 +20,10 @@
 !*/*.vs
 !*/*/*.fs
 !*/*/*.vs
+!*/*/*/*.c
+!*/*/*/*.glsl
+!*/*/*/*.h
+!*/*/*/*.fs
+!*/*/*/*.vs
 # Do not ignore the .gitignore file itself
 !.gitignore
