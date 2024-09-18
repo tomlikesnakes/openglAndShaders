@@ -8,8 +8,17 @@
 !*.c
 !*.glsl
 !*.md
+!*.h
 
 !*/*.c
 !*/*.glsl
+!*/*.h
+!*/*/*.c
+!*/*/*.glsl
+!*/*/*.h
+!*/*.fs
+!*/*.vs
+!*/*/*.fs
+!*/*/*.vs
 # Do not ignore the .gitignore file itself
 !.gitignore
