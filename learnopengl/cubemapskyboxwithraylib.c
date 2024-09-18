@@ -1,151 +1,153 @@
-#include <raylib.h>
-#include <raymath.h>
-#include <rlgl.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include "raylib.h"
+#include "rlgl.h"
+#include "raymath.h"
 
-#define GLSL_VERSION 330
+#if defined(PLATFORM_DESKTOP)
+    #define GLSL_VERSION            330
+#else   // PLATFORM_ANDROID, PLATFORM_WEB
+    #define GLSL_VERSION            100
+#endif
 
-// Initialization of camera
-void InitCamera(Camera *camera)
-{
-    camera->position = (Vector3){ 0.0f, 0.0f, 0.1f };
-    camera->target = (Vector3){ 0.0f, 0.0f, 0.0f };
-    camera->up = (Vector3){ 0.0f, 1.0f, 0.0f };
-    camera->fovy = 90.0f;
-    camera->projection = CAMERA_PERSPECTIVE;
-}
-
-// Error checking function for shader compilation
-void CheckShaderCompilation(Shader shader, const char* shaderType) {
-    if (shader.id == 0) {
-        printf("ERROR: Failed to compile %s shader\n", shaderType);
-        exit(1);
-    }
-}
+// Global variables for toggles
+bool showGrid = true;
+bool showFPS = true;
+bool showSkybox = true;
+bool insideSkybox = false;
 
 int main(void)
 {
     const int screenWidth = 800;
-    const int screenHeight = 600;
+    const int screenHeight = 450;
 
-    SetConfigFlags(FLAG_MSAA_4X_HINT);
-    InitWindow(screenWidth, screenHeight, "Debug Cubemap Skybox with Raylib");
+    InitWindow(screenWidth, screenHeight, "raylib [models] example - enhanced skybox with inside view");
 
     Camera camera = { 0 };
-    InitCamera(&camera);
+    camera.position = (Vector3){ 1.0f, 1.0f, 1.0f };
+    camera.target = (Vector3){ 4.0f, 1.0f, 4.0f };
+    camera.up = (Vector3){ 0.0f, 1.0f, 0.0f };
+    camera.fovy = 45.0f;
+    camera.projection = CAMERA_PERSPECTIVE;
 
-    // Load cubemap images
-    Image img[6];
-    const char* faceFiles[] = {
-        "resources/textures/skybox/right.png",
-        "resources/textures/skybox/left.png",
-        "resources/textures/skybox/top.png",
-        "resources/textures/skybox/bottom.png",
-        "resources/textures/skybox/front.png",
-        "resources/textures/skybox/back.png"
-    };
-
-    for (int i = 0; i < 6; i++) {
-        img[i] = LoadImage(faceFiles[i]);
-        if (img[i].data == NULL) {
-            printf("ERROR: Failed to load image: %s\n", faceFiles[i]);
-            exit(1);
-        }
-        printf("DEBUG: Loaded image %s: %dx%d, format: %d\n", faceFiles[i], img[i].width, img[i].height, img[i].format);
-    }
-
-    // Create cubemap
-    int size = img[0].width;
-    Image verticalStrip = GenImageColor(size, size * 6, BLANK);
-    for (int i = 0; i < 6; i++) {
-        ImageDraw(&verticalStrip, img[i], (Rectangle){0, 0, size, size}, (Rectangle){0, size * i, size, size}, WHITE);
-        UnloadImage(img[i]);
-    }
-
-    TextureCubemap cubemap = LoadTextureCubemap(verticalStrip, CUBEMAP_LAYOUT_LINE_VERTICAL);
-    UnloadImage(verticalStrip);
-
-    // Debug cubemap info
-    printf("DEBUG: Cubemap created - ID: %u, Width: %d, Height: %d, Format: %d, Mipmaps: %d\n", 
-           cubemap.id, cubemap.width, cubemap.height, cubemap.format, cubemap.mipmaps);
-
-    if (cubemap.id == 0) {
-        printf("ERROR: Failed to create cubemap\n");
-        exit(1);
-    }
-
-    // Load skybox shader
-    Shader shader = LoadShader("resources/shaders/skybox.vs", "resources/shaders/skybox.fs");
-    CheckShaderCompilation(shader, "skybox");
-
-    // Get shader locations
-    int viewLoc = GetShaderLocation(shader, "matView");
-    int projectionLoc = GetShaderLocation(shader, "matProjection");
-    int environmentMapLoc = GetShaderLocation(shader, "environmentMap");
-
-    printf("DEBUG: Shader locations - View: %d, Projection: %d, EnvironmentMap: %d\n", viewLoc, projectionLoc, environmentMapLoc);
-
-    // Set cubemap texture uniform
-    SetShaderValueTexture(shader, environmentMapLoc, cubemap);
-
-    // Create skybox mesh (cube)
     Mesh cube = GenMeshCube(1.0f, 1.0f, 1.0f);
     Model skybox = LoadModelFromMesh(cube);
 
-    // Set skybox shader
-    skybox.materials[0].shader = shader;
+    skybox.materials[0].shader = LoadShader(TextFormat("resources/shaders/skybox.vs", GLSL_VERSION),
+                                            TextFormat("resources/shaders/skybox.fs", GLSL_VERSION));
 
+    SetShaderValue(skybox.materials[0].shader, GetShaderLocation(skybox.materials[0].shader, "environmentMap"), (int[1]){ MATERIAL_MAP_CUBEMAP }, SHADER_UNIFORM_INT);
+
+    Image faces[6] = {
+        LoadImage("resources/textures/skybox/right.png"),
+        LoadImage("resources/textures/skybox/left.png"),
+        LoadImage("resources/textures/skybox/top.png"),
+        LoadImage("resources/textures/skybox/bottom.png"),
+        LoadImage("resources/textures/skybox/front.png"),
+        LoadImage("resources/textures/skybox/back.png")
+    };
+
+    int faceWidth = faces[0].width;
+    int faceHeight = faces[0].height;
+    Image verticalImage = GenImageColor(faceWidth, faceHeight * 6, BLANK);
+
+    for (int i = 0; i < 6; i++) {
+        ImageDraw(&verticalImage, faces[i], (Rectangle){0, 0, faceWidth, faceHeight}, (Rectangle){0, i * faceHeight, faceWidth, faceHeight}, WHITE);
+        UnloadImage(faces[i]);
+    }
+
+    skybox.materials[0].maps[MATERIAL_MAP_CUBEMAP].texture = LoadTextureCubemap(verticalImage, CUBEMAP_LAYOUT_LINE_VERTICAL);
+    UnloadImage(verticalImage);
+
+    DisableCursor();
     SetTargetFPS(60);
+
+    float moveSpeed = 0.1f;
+    float zoom = 1.0f;
+    float zoomSpeed = 0.1f;
 
     while (!WindowShouldClose())
     {
+        if (IsKeyDown(KEY_W)) camera.position = Vector3Add(camera.position, Vector3Scale(Vector3Normalize(Vector3Subtract(camera.target, camera.position)), moveSpeed));
+        if (IsKeyDown(KEY_S)) camera.position = Vector3Subtract(camera.position, Vector3Scale(Vector3Normalize(Vector3Subtract(camera.target, camera.position)), moveSpeed));
+        if (IsKeyDown(KEY_A)) camera.position = Vector3Subtract(camera.position, Vector3Scale(Vector3Normalize(Vector3CrossProduct(Vector3Subtract(camera.target, camera.position), camera.up)), moveSpeed));
+        if (IsKeyDown(KEY_D)) camera.position = Vector3Add(camera.position, Vector3Scale(Vector3Normalize(Vector3CrossProduct(Vector3Subtract(camera.target, camera.position), camera.up)), moveSpeed));
+        if (IsKeyDown(KEY_SPACE)) camera.position.y += moveSpeed;
+        if (IsKeyDown(KEY_LEFT_CONTROL)) camera.position.y -= moveSpeed;
+
+        float wheel = GetMouseWheelMove();
+        if (wheel != 0) {
+            zoom += wheel * zoomSpeed;
+            if (zoom < 0.1f) zoom = 0.1f;
+            if (zoom > 3.0f) zoom = 3.0f;
+            camera.fovy = 45.0f / zoom;
+        }
+
+        if (IsKeyPressed(KEY_UP)) moveSpeed *= 1.1f;
+        if (IsKeyPressed(KEY_DOWN)) moveSpeed /= 1.1f;
+        if (IsKeyPressed(KEY_TAB)) {
+            if (IsCursorHidden()) EnableCursor();
+            else DisableCursor();
+        }
+        if (IsKeyPressed(KEY_G)) showGrid = !showGrid;
+        if (IsKeyPressed(KEY_F)) showFPS = !showFPS;
+        if (IsKeyPressed(KEY_B)) showSkybox = !showSkybox;
+
+        // Toggle between inside and outside view
+        if (IsKeyPressed(KEY_I)) {
+            insideSkybox = !insideSkybox;
+            if (insideSkybox) {
+                camera.position = (Vector3){ 0.0f, 0.0f, 0.0f };
+            } else {
+                camera.position = (Vector3){ 1.0f, 1.0f, 1.0f };
+            }
+        }
+
+        if (IsKeyPressed(KEY_R)) {
+            camera.position = (Vector3){ 1.0f, 1.0f, 1.0f };
+            camera.target = (Vector3){ 4.0f, 1.0f, 4.0f };
+            zoom = 1.0f;
+            camera.fovy = 45.0f;
+            insideSkybox = false;
+        }
+
         UpdateCamera(&camera, CAMERA_FIRST_PERSON);
 
         BeginDrawing();
+
             ClearBackground(RAYWHITE);
 
             BeginMode3D(camera);
-                // Draw skybox
-                rlDisableBackfaceCulling();
-                rlDisableDepthMask();
-                
-                // Get camera view matrix and remove translation
-                Matrix view = GetCameraMatrix(camera);
-                view.m12 = 0;
-                view.m13 = 0;
-                view.m14 = 0;
-                
-                // Calculate projection matrix
-                float aspect = (float)GetScreenWidth() / (float)GetScreenHeight();
-                Matrix projection = MatrixPerspective(camera.fovy * DEG2RAD, aspect, RL_CULL_DISTANCE_NEAR, RL_CULL_DISTANCE_FAR);
-                
-                // Set view and projection matrix uniforms
-                SetShaderValueMatrix(shader, viewLoc, view);
-                SetShaderValueMatrix(shader, projectionLoc, projection);
-                
-                // Draw skybox
-                DrawModel(skybox, (Vector3){0, 0, 0}, 1.0f, WHITE);
-                
-                rlEnableBackfaceCulling();
-                rlEnableDepthMask();
 
-                // Draw other 3D objects here
-                DrawCube((Vector3){0, 0, 0}, 1.0f, 1.0f, 1.0f, RED);
-                DrawCubeWires((Vector3){0, 0, 0}, 1.0f, 1.0f, 1.0f, MAROON);
+                if (showSkybox) {
+                    rlDisableBackfaceCulling();
+                    rlDisableDepthMask();
+                    if (insideSkybox) {
+                        rlScalef(500.0f, 500.0f, 500.0f);  // Make the skybox much larger when inside
+                    }
+                    DrawModel(skybox, (Vector3){0, 0, 0}, 1.0f, WHITE);
+                    rlEnableBackfaceCulling();
+                    rlEnableDepthMask();
+                }
 
-                DrawGrid(10, 1.0f);
+                if (showGrid && !insideSkybox) DrawGrid(10, 1.0f);
+
             EndMode3D();
 
-            DrawFPS(10, 10);
-            DrawText(TextFormat("Camera: (%.2f, %.2f, %.2f)", camera.position.x, camera.position.y, camera.position.z), 10, 30, 20, BLACK);
-            DrawText("Use mouse to look around and WASD to move", 10, 50, 20, BLACK);
+            if (showFPS) DrawFPS(10, 10);
+
+            DrawText("Controls:", 10, 30, 20, BLACK);
+            DrawText("WASD: Move | SPACE/CTRL: Up/Down | TAB: Toggle cursor", 10, 50, 10, DARKGRAY);
+            DrawText("G: Toggle grid | F: Toggle FPS | B: Toggle skybox", 10, 70, 10, DARKGRAY);
+            DrawText("R: Reset | UP/DOWN: Adjust speed | Mouse wheel: Zoom", 10, 90, 10, DARKGRAY);
+            DrawText("I: Toggle inside/outside view", 10, 110, 10, DARKGRAY);
+
+            DrawText(TextFormat("Zoom: %.2fx", zoom), 10, 130, 20, BLACK);
+            DrawText(TextFormat("View: %s", insideSkybox ? "Inside" : "Outside"), 10, 150, 20, BLACK);
+
         EndDrawing();
     }
 
-    // Unload resources
-    UnloadShader(shader);
-    UnloadTexture(cubemap);
+    UnloadShader(skybox.materials[0].shader);
+    UnloadTexture(skybox.materials[0].maps[MATERIAL_MAP_CUBEMAP].texture);
     UnloadModel(skybox);
 
     CloseWindow();
