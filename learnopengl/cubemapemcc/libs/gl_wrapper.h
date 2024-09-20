@@ -3,6 +3,7 @@
 #define GL_WRAPPER_H
 
 #include <GLES3/gl3.h>
+#include <errno.h>
 #include <cglm/cglm.h>
 #include <stdbool.h>
 
@@ -62,6 +63,7 @@ typedef struct {
     GLenum format;
     GLenum internal_format;
     GLenum type;
+    GLenum target;  // GL_TEXTURE_2D or GL_TEXTURE_CUBE_MAP
 } GLWTexture;
 
 GLWrapperError glw_create_texture(unsigned char* data, int width, int height, GLenum format, GLenum internal_format, GLenum type, GLWTexture* out_texture);

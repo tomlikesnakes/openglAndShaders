@@ -1,4 +1,5 @@
 #include "gl_wrapper.h"
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -245,8 +246,9 @@ void glw_delete_texture(GLWTexture* texture) {
 
 void glw_bind_texture(const GLWTexture* texture, GLenum texture_unit) {
     glActiveTexture(GL_TEXTURE0 + texture_unit);
-    glBindTexture(GL_TEXTURE_2D, texture->id);
+    glBindTexture(texture->target, texture->id);
 }
+
 
 // Framebuffer management
 GLWrapperError glw_create_framebuffer(int width, int height, GLWFramebuffer* out_framebuffer) {
@@ -390,6 +392,53 @@ void glw_check_error(const char* operation) {
 GLWrapperError glw_read_file(const char* filename, char** out_content) {
     FILE* file = fopen(filename, "rb");
     if (!file) {
+        glw_log("Failed to open file: %s\nError: %s\n", filename, strerror(errno));
+        return GL_WRAPPER_ERROR_FILE_READ;
+    }
+
+    if (fseek(file, 0, SEEK_END) != 0) {
+        glw_log("Failed to seek to end of file: %s\nError: %s\n", filename, strerror(errno));
+        fclose(file);
+        return GL_WRAPPER_ERROR_FILE_READ;
+    }
+
+    long length = ftell(file);
+    if (length == -1) {
+        glw_log("Failed to get file size: %s\nError: %s\n", filename, strerror(errno));
+        fclose(file);
+        return GL_WRAPPER_ERROR_FILE_READ;
+    }
+
+    if (fseek(file, 0, SEEK_SET) != 0) {
+        glw_log("Failed to seek to start of file: %s\nError: %s\n", filename, strerror(errno));
+        fclose(file);
+        return GL_WRAPPER_ERROR_FILE_READ;
+    }
+
+    *out_content = (char*)malloc(length + 1);
+    if (!*out_content) {
+        glw_log("Failed to allocate memory for file content: %s\nError: %s\n", filename, strerror(errno));
+        fclose(file);
+        return GL_WRAPPER_ERROR_MEMORY_ALLOCATION;
+    }
+
+    size_t read_length = fread(*out_content, 1, length, file);
+    if (read_length != length) {
+        glw_log("Failed to read entire file: %s\nExpected %ld bytes, read %zu bytes\nError: %s\n",
+                filename, length, read_length, ferror(file) ? strerror(errno) : "Unknown error");
+        free(*out_content);
+        fclose(file);
+        return GL_WRAPPER_ERROR_FILE_READ;
+    }
+
+    (*out_content)[length] = '\0';
+    fclose(file);
+    return GL_WRAPPER_SUCCESS;
+}
+/*
+GLWrapperError glw_read_file(const char* filename, char** out_content) {
+    FILE* file = fopen(filename, "rb");
+    if (!file) {
         glw_log("Failed to open file: %s\n", filename);
         return GL_WRAPPER_ERROR_FILE_READ;
     }
@@ -410,6 +459,7 @@ GLWrapperError glw_read_file(const char* filename, char** out_content) {
     fclose(file);
     return GL_WRAPPER_SUCCESS;
 }
+*/
 
 #ifdef GL_WRAPPER_DEBUG
 void glw_log(const char* format, ...) {
