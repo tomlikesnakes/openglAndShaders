@@ -1,8 +1,8 @@
 #include <stdlib.h>
 #include <string.h>
-#include "raylib.h"
-#include "rlgl.h"
-#include "raymath.h"
+#include <raylib.h>
+#include <rlgl.h>
+#include <raymath.h>
 
 #if defined(PLATFORM_WEB)
     #include <emscripten/emscripten.h>
@@ -261,9 +261,10 @@ void UpdateDrawFrame(void)
                 rlEnableDepthMask();
             }
 
-            if (showGrid && !insideSkybox) DrawGrid(10, 1.0f);
+            //if (showGrid && !insideSkybox) DrawGrid(10, 1.0f);
 
         EndMode3D();
+    /*
 
         if (showFPS) DrawFPS(10, 10);
 
@@ -275,6 +276,7 @@ void UpdateDrawFrame(void)
 
         DrawText(TextFormat("Zoom: %.2fx", zoom), 10, 130, 20, BLACK);
         DrawText(TextFormat("View: %s", insideSkybox ? "Inside" : "Outside"), 10, 150, 20, BLACK);
+    */
 
     EndDrawing();
 }

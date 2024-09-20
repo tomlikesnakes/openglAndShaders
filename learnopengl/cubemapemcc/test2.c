@@ -26,6 +26,7 @@ Camera camera = { 0 };
 Model skybox;
 float zoom = 1.0f;
 float moveSpeed = 0.1f;
+float rotationSpeed = 0.05f;
 
 
 // Skybox variables
@@ -34,6 +35,11 @@ Shader skyboxShader;
 unsigned int skyboxVAO;
 unsigned int skyboxTexture;
 
+// Player variables
+GLuint playerVAO, playerVBO, playerEBO;
+Shader playerShader;
+Vector3 playerPosition = { 0.0f, 0.0f, 0.0f };
+float playerSize = 0.1f;  // Smaller player size
 
 // Function prototypes
 void UpdateDrawFrame(void);
@@ -44,10 +50,14 @@ void DrawSkybox(void);
 void UnloadSkybox(void);
 void LogError(const char* message);
 void UpdatePlayerPosition();
-
 void UpdateCameraThirdPerson();
-//void CheckGLError(const char* operation);
+void KeysCamera();
 void LogMessage(const char* message);
+void InitializePlayerCube();
+void DrawPlayerCube();
+void DrawDebugCube(Vector3 position, Vector3 size, Color color);
+void DrawDebugGrid(int slices, float spacing);
+//void CheckGLError(const char* operation);
 
 #if defined(PLATFORM_WEB)
 // Global variables for key states (web version)
@@ -98,11 +108,7 @@ void UpdateMouseWheel(float delta) {
 }
 #endif
 
-Vector3 playerPosition = { 0.0f, 0.0f, 0.0f };
 
-// Add these global variables at the top of your file
-GLuint playerVAO, playerVBO, playerEBO;
-Shader playerShader;
 
 // Add this function to initialize the player cube
 void InitializePlayerCube() {
@@ -293,7 +299,31 @@ void UpdatePlayerPosition() {
     playerPosition.x = Clamp(playerPosition.x, -10.0f, 10.0f);
     playerPosition.z = Clamp(playerPosition.z, -10.0f, 10.0f);
 }
+void KeysCamera() {
+    // Move camera
+    if (IsKeyDown(KEY_W)) camera.position = Vector3Add(camera.position, Vector3Scale(camera.target, moveSpeed));
+    if (IsKeyDown(KEY_S)) camera.position = Vector3Subtract(camera.position, Vector3Scale(camera.target, moveSpeed));
+    if (IsKeyDown(KEY_A)) camera.position = Vector3Subtract(camera.position, Vector3Scale(Vector3Normalize(Vector3CrossProduct(camera.target, camera.up)), moveSpeed));
+    if (IsKeyDown(KEY_D)) camera.position = Vector3Add(camera.position, Vector3Scale(Vector3Normalize(Vector3CrossProduct(camera.target, camera.up)), moveSpeed));
 
+    // Rotate camera
+    if (IsKeyDown(KEY_LEFT)) camera.target = Vector3RotateByAxisAngle(camera.target, camera.up, -rotationSpeed);
+    if (IsKeyDown(KEY_RIGHT)) camera.target = Vector3RotateByAxisAngle(camera.target, camera.up, rotationSpeed);
+    if (IsKeyDown(KEY_UP)) camera.target = Vector3RotateByAxisAngle(camera.target, Vector3CrossProduct(camera.target, camera.up), -rotationSpeed);
+    if (IsKeyDown(KEY_DOWN)) camera.target = Vector3RotateByAxisAngle(camera.target, Vector3CrossProduct(camera.target, camera.up), rotationSpeed);
+
+    // Move player
+    if (IsKeyDown(KEY_I)) playerPosition.z -= moveSpeed;
+    if (IsKeyDown(KEY_K)) playerPosition.z += moveSpeed;
+    if (IsKeyDown(KEY_J)) playerPosition.x -= moveSpeed;
+    if (IsKeyDown(KEY_L)) playerPosition.x += moveSpeed;
+    if (IsKeyDown(KEY_U)) playerPosition.y += moveSpeed;
+    if (IsKeyDown(KEY_O)) playerPosition.y -= moveSpeed;
+
+    // Adjust speeds
+    if (IsKeyPressed(KEY_EQUAL)) { moveSpeed *= 1.1f; rotationSpeed *= 1.1f; }
+    if (IsKeyPressed(KEY_MINUS)) { moveSpeed /= 1.1f; rotationSpeed /= 1.1f; }
+}
 void UpdateCameraThirdPerson() {
     // Set camera to follow player from behind and above
     float cameraDistance = 5.0f;
@@ -310,51 +340,86 @@ void SetupSkybox(void)
 {
     //LogInfo("Setting up skybox...");
 
+    float skyboxSize = 1000.0f;  // Adjust this value as needed
     // Skybox vertices
     float skyboxVertices[] = {
-        // positions          
-        -1.0f,  1.0f, -1.0f,
-        -1.0f, -1.0f, -1.0f,
-         1.0f, -1.0f, -1.0f,
-         1.0f, -1.0f, -1.0f,
-         1.0f,  1.0f, -1.0f,
-        -1.0f,  1.0f, -1.0f,
+    // positions          
+    -1.0f,  1.0f, -1.0f,
+    -1.0f, -1.0f, -1.0f,
+     1.0f, -1.0f, -1.0f,
+     1.0f, -1.0f, -1.0f,
+     1.0f,  1.0f, -1.0f,
+    -1.0f,  1.0f, -1.0f,
 
-        -1.0f, -1.0f,  1.0f,
-        -1.0f, -1.0f, -1.0f,
-        -1.0f,  1.0f, -1.0f,
-        -1.0f,  1.0f, -1.0f,
-        -1.0f,  1.0f,  1.0f,
-        -1.0f, -1.0f,  1.0f,
+    -1.0f, -1.0f,  1.0f,
+    -1.0f, -1.0f, -1.0f,
+    -1.0f,  1.0f, -1.0f,
+    -1.0f,  1.0f, -1.0f,
+    -1.0f,  1.0f,  1.0f,
+    -1.0f, -1.0f,  1.0f,
 
-         1.0f, -1.0f, -1.0f,
-         1.0f, -1.0f,  1.0f,
-         1.0f,  1.0f,  1.0f,
-         1.0f,  1.0f,  1.0f,
-         1.0f,  1.0f, -1.0f,
-         1.0f, -1.0f, -1.0f,
+     1.0f, -1.0f, -1.0f,
+     1.0f, -1.0f,  1.0f,
+     1.0f,  1.0f,  1.0f,
+     1.0f,  1.0f,  1.0f,
+     1.0f,  1.0f, -1.0f,
+     1.0f, -1.0f, -1.0f,
 
-        -1.0f, -1.0f,  1.0f,
-        -1.0f,  1.0f,  1.0f,
-         1.0f,  1.0f,  1.0f,
-         1.0f,  1.0f,  1.0f,
-         1.0f, -1.0f,  1.0f,
-        -1.0f, -1.0f,  1.0f,
+    -1.0f, -1.0f,  1.0f,
+    -1.0f,  1.0f,  1.0f,
+     1.0f,  1.0f,  1.0f,
+     1.0f,  1.0f,  1.0f,
+     1.0f, -1.0f,  1.0f,
+    -1.0f, -1.0f,  1.0f,
 
-        -1.0f,  1.0f, -1.0f,
-         1.0f,  1.0f, -1.0f,
-         1.0f,  1.0f,  1.0f,
-         1.0f,  1.0f,  1.0f,
-        -1.0f,  1.0f,  1.0f,
-        -1.0f,  1.0f, -1.0f,
+    -1.0f,  1.0f, -1.0f,
+     1.0f,  1.0f, -1.0f,
+     1.0f,  1.0f,  1.0f,
+     1.0f,  1.0f,  1.0f,
+    -1.0f,  1.0f,  1.0f,
+    -1.0f,  1.0f, -1.0f,
 
-        -1.0f, -1.0f, -1.0f,
-        -1.0f, -1.0f,  1.0f,
-         1.0f, -1.0f, -1.0f,
-         1.0f, -1.0f, -1.0f,
-        -1.0f, -1.0f,  1.0f,
-         1.0f, -1.0f,  1.0f
-    };
+    -1.0f, -1.0f, -1.0f,
+    -1.0f, -1.0f,  1.0f,
+     1.0f, -1.0f, -1.0f,
+     1.0f, -1.0f, -1.0f,
+    -1.0f, -1.0f,  1.0f,
+     1.0f, -1.0f,  1.0f
+};
+    /*
+float skyboxVertices[] = {
+    // Front face
+    -skyboxSize, -skyboxSize,  skyboxSize,
+     skyboxSize, -skyboxSize,  skyboxSize,
+     skyboxSize,  skyboxSize,  skyboxSize,
+    -skyboxSize,  skyboxSize,  skyboxSize,
+    // Back face
+    -skyboxSize, -skyboxSize, -skyboxSize,
+    -skyboxSize,  skyboxSize, -skyboxSize,
+     skyboxSize,  skyboxSize, -skyboxSize,
+     skyboxSize, -skyboxSize, -skyboxSize,
+    // Top face
+    -skyboxSize,  skyboxSize, -skyboxSize,
+    -skyboxSize,  skyboxSize,  skyboxSize,
+     skyboxSize,  skyboxSize,  skyboxSize,
+     skyboxSize,  skyboxSize, -skyboxSize,
+    // Bottom face
+    -skyboxSize, -skyboxSize, -skyboxSize,
+     skyboxSize, -skyboxSize, -skyboxSize,
+     skyboxSize, -skyboxSize,  skyboxSize,
+    -skyboxSize, -skyboxSize,  skyboxSize,
+    // Right face
+     skyboxSize, -skyboxSize, -skyboxSize,
+     skyboxSize,  skyboxSize, -skyboxSize,
+     skyboxSize,  skyboxSize,  skyboxSize,
+     skyboxSize, -skyboxSize,  skyboxSize,
+    // Left face
+    -skyboxSize, -skyboxSize, -skyboxSize,
+    -skyboxSize, -skyboxSize,  skyboxSize,
+    -skyboxSize,  skyboxSize,  skyboxSize,
+    -skyboxSize,  skyboxSize, -skyboxSize
+};
+*/
 
     /*
     // Generate and bind VAO with opengl
@@ -485,14 +550,17 @@ void DrawSkybox(void)
 {
     rlDisableBackfaceCulling();
     rlDisableDepthMask();
+    glDepthFunc(GL_LEQUAL);
 
     BeginShaderMode(skyboxShader);
 
-    Matrix projection = MatrixPerspective(camera.fovy*DEG2RAD, (double)GetScreenWidth()/(double)GetScreenHeight(), 0.1, 1000.0);
+    Matrix projection = MatrixPerspective(camera.fovy*DEG2RAD, (double)GetScreenWidth()/(double)GetScreenHeight(), 0.1, 10000.0);
+    
+    // Remove translation from the view matrix
     Matrix view = MatrixLookAt(camera.position, camera.target, camera.up);
-    view.m0 = 1.0f; view.m1 = 0.0f; view.m2 = 0.0f;
-    view.m4 = 0.0f; view.m5 = 1.0f; view.m6 = 0.0f;
-    view.m8 = 0.0f; view.m9 = 0.0f; view.m10 = 1.0f;
+    view.m12 = 0;
+    view.m13 = 0;
+    view.m14 = 0;
 
     SetShaderValueMatrix(skyboxShader, GetShaderLocation(skyboxShader, "projection"), projection);
     SetShaderValueMatrix(skyboxShader, GetShaderLocation(skyboxShader, "view"), view);
@@ -501,18 +569,17 @@ void DrawSkybox(void)
     rlEnableTextureCubemap(skyboxTexture);
 
     rlEnableVertexArray(skyboxVAO);
-    rlDrawVertexArray(0, 36);
+    rlDrawVertexArray(0, 36);  // 6 faces * 2 triangles * 3 vertices
     rlDisableVertexArray();
-
 
     rlDisableTextureCubemap();
 
     EndShaderMode();
 
+    glDepthFunc(GL_LESS);
     rlEnableBackfaceCulling();
     rlEnableDepthMask();
 }
-
 /* unload skybox opengl
 void UnloadSkybox(void)
 {
@@ -532,22 +599,25 @@ void UnloadSkybox(void)
 
 void InitGame(void)
 {
-    //LogInfo("Initializing game...");
-
-    camera.position = (Vector3){ 1.0f, 1.0f, 1.0f };
-    camera.target = (Vector3){ 4.0f, 1.0f, 4.0f };
+    // Set up the camera
+    camera.position = (Vector3){ 0.0f, 0.0f, 0.0f };  // Position the camera further back and higher up
+    camera.target = (Vector3){ 1.0f, 0.0f, 0.0f };       // Look slightly to the right
     camera.up = (Vector3){ 0.0f, 1.0f, 0.0f };
-    camera.fovy = 45.0f;
+    camera.fovy = 90.0f;
     camera.projection = CAMERA_PERSPECTIVE;
+
+    // Set initial player position
+    playerPosition = (Vector3){ 0.0f, 0.0f, 0.0f };  // Start the player at the center
 
     InitializeGrid();
     SetupSkybox();
-    
+    InitializePlayerCube();
 
     DisableCursor();
 
-    //LogInfo("Game initialized successfully");
+    LogMessage("Game initialized successfully");
 }
+
 
 void UpdateDrawFrame(void)
 {
@@ -629,27 +699,29 @@ void UpdateDrawFrame(void)
     playerPosition.z = Clamp(playerPosition.z, -10.0f, 10.0f);
 
     // Update camera to follow player
-    UpdateCameraThirdPerson();
+    //UpdateCameraThirdPerson();
 
-    LogMessage("A");
-    UpdateCamera(&camera, CAMERA_THIRD_PERSON);
+    //LogMessage("A");
+    //UpdateCamera(&camera, CAMERA_THIRD_PERSON);
 
-    LogMessage("B");
+    KeysCamera();
+    UpdatePlayerPosition();  // Keep your existing player update logic
+    //LogMessage("B");
     BeginDrawing();
 
-    LogMessage("C");
+    //LogMessage("C");
     ClearBackground(RAYWHITE);
 
-    LogMessage("D");
+    //LogMessage("D");
     BeginMode3D(camera);
 
-    LogMessage("E");
+    //LogMessage("E");
     if (showSkybox) {
-        LogMessage("F");
+        //LogMessage("F");
         DrawSkybox();
     }
 
-    LogMessage("O");
+    //LogMessage("O");
     if (showGrid && !insideSkybox) {
         rlEnableShader(rlGetShaderIdDefault());
         rlEnableVertexArray(gridVAO);
@@ -668,18 +740,19 @@ void UpdateDrawFrame(void)
 
     // Draw player using Raylib's DrawCube function
     //DrawCube(playerPosition, 0.5f, 0.5f, 0.5f, RED);
-    DrawPlayerCube();
+    //DrawPlayerCube();
+    //DrawPlayer();
 
-    LogMessage("R");
+    //LogMessage("R");
     EndMode3D();
 
-    LogMessage("S");
+    //LogMessage("S");
     //if (showFPS) DrawFPS(10, 10);
 
-    LogMessage("S");
+    //LogMessage("S");
     EndDrawing();
 
-    LogMessage("L");
+    //LogMessage("L");
 }
 
 void LogError(const char* message)
@@ -692,4 +765,66 @@ void LogMessage(const char* message) {
     TraceLog(LOG_INFO, "%s", message);
     printf("INFO: %s\n", message);
 }
+// Add these new functions for debug rendering
+void DrawDebugCube(Vector3 position, Vector3 size, Color color)
+{
+    rlPushMatrix();
+        rlTranslatef(position.x, position.y, position.z);
+        rlScalef(size.x, size.y, size.z);
+        
+        rlBegin(RL_LINES);
+        rlColor4ub(color.r, color.g, color.b, color.a);
 
+        // Front face
+        rlVertex3f(-0.5f, -0.5f, 0.5f);  rlVertex3f(0.5f, -0.5f, 0.5f);
+        rlVertex3f(0.5f, -0.5f, 0.5f);   rlVertex3f(0.5f, 0.5f, 0.5f);
+        rlVertex3f(0.5f, 0.5f, 0.5f);    rlVertex3f(-0.5f, 0.5f, 0.5f);
+        rlVertex3f(-0.5f, 0.5f, 0.5f);   rlVertex3f(-0.5f, -0.5f, 0.5f);
+
+        // Back face
+        rlVertex3f(-0.5f, -0.5f, -0.5f); rlVertex3f(0.5f, -0.5f, -0.5f);
+        rlVertex3f(0.5f, -0.5f, -0.5f);  rlVertex3f(0.5f, 0.5f, -0.5f);
+        rlVertex3f(0.5f, 0.5f, -0.5f);   rlVertex3f(-0.5f, 0.5f, -0.5f);
+        rlVertex3f(-0.5f, 0.5f, -0.5f);  rlVertex3f(-0.5f, -0.5f, -0.5f);
+
+        // Top face
+        rlVertex3f(-0.5f, 0.5f, 0.5f);   rlVertex3f(0.5f, 0.5f, 0.5f);
+        rlVertex3f(0.5f, 0.5f, 0.5f);    rlVertex3f(0.5f, 0.5f, -0.5f);
+        rlVertex3f(0.5f, 0.5f, -0.5f);   rlVertex3f(-0.5f, 0.5f, -0.5f);
+        rlVertex3f(-0.5f, 0.5f, -0.5f);  rlVertex3f(-0.5f, 0.5f, 0.5f);
+
+        // Bottom face
+        rlVertex3f(-0.5f, -0.5f, 0.5f);  rlVertex3f(0.5f, -0.5f, 0.5f);
+        rlVertex3f(0.5f, -0.5f, 0.5f);   rlVertex3f(0.5f, -0.5f, -0.5f);
+        rlVertex3f(0.5f, -0.5f, -0.5f);  rlVertex3f(-0.5f, -0.5f, -0.5f);
+        rlVertex3f(-0.5f, -0.5f, -0.5f); rlVertex3f(-0.5f, -0.5f, 0.5f);
+        rlEnd();
+    rlPopMatrix();
+}
+
+void DrawDebugGrid(int slices, float spacing)
+{
+    int halfSlices = slices / 2;
+    
+    rlPushMatrix();
+        rlBegin(RL_LINES);
+        for(int i = -halfSlices; i <= halfSlices; i++)
+        {
+            if (i == 0)
+            {
+                rlColor3f(0.5f, 0.5f, 0.5f);
+            }
+            else
+            {
+                rlColor3f(0.75f, 0.75f, 0.75f);
+            }
+            
+            rlVertex3f((float)i*spacing, 0.0f, (float)-halfSlices*spacing);
+            rlVertex3f((float)i*spacing, 0.0f, (float)halfSlices*spacing);
+            
+            rlVertex3f((float)-halfSlices*spacing, 0.0f, (float)i*spacing);
+            rlVertex3f((float)halfSlices*spacing, 0.0f, (float)i*spacing);
+        }
+        rlEnd();
+    rlPopMatrix();
+}
