@@ -291,60 +291,61 @@ void main_loop(void) {
     // Draw
     BeginDrawing();
 
-    glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+    glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     check_gl_error("Clear buffers");
 
-    // Draw scene as normal
-    glw_use_shader(&shader);
-    mat4 model = GLM_MAT4_IDENTITY_INIT;
+    // Set up view and projection matrices
     mat4 view, projection;
-
-    // Convert raylib camera to view matrix
     vec3 cameraPos = {camera.position.x, camera.position.y, camera.position.z};
     vec3 cameraTarget = {camera.target.x, camera.target.y, camera.target.z};
     vec3 cameraUp = {camera.up.x, camera.up.y, camera.up.z};
     glm_lookat(cameraPos, cameraTarget, cameraUp, view);
 
-    // Apply camera Z offset
     vec3 offset = {0.0f, 0.0f, camera_z_offset};
     glm_translate(view, offset);
 
     glm_perspective(glm_rad(camera.fovy), (float)SCREEN_WIDTH / (float)SCREEN_HEIGHT, 0.1f, 100.0f, projection);
-
-    glw_set_uniform_mat4(&shader, "model", model);
-    glw_set_uniform_mat4(&shader, "view", view);
-    glw_set_uniform_mat4(&shader, "projection", projection);
-    check_gl_error("Set cube shader uniforms");
+    // After setting view and projection matrices
+    printf("View matrix:\n");
+    for (int i = 0; i < 4; i++) {
+        printf("%f %f %f %f\n", view[i][0], view[i][1], view[i][2], view[i][3]);
+    }
+    printf("Projection matrix:\n");
+    for (int i = 0; i < 4; i++) {
+        printf("%f %f %f %f\n", projection[i][0], projection[i][1], projection[i][2], projection[i][3]);
+    }
 
     // Draw cube
     if (show_container) {
-        glw_bind_texture(&cubeTexture, 0);
-        glw_draw_mesh(&cubeMesh, GL_TRIANGLES);
+        glw_use_shader(&shader);
+        check_gl_error("Use cube shader");
+
+        mat4 model = GLM_MAT4_IDENTITY_INIT;
+        glw_set_uniform_mat4(&shader, "model", model);
+        glw_set_uniform_mat4(&shader, "view", view);
+        glw_set_uniform_mat4(&shader, "projection", projection);
+        check_gl_error("Set cube shader uniforms");
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, cubeTexture.id);
+        glw_set_uniform_1i(&shader, "texture1", 0);
+        check_gl_error("Bind cube texture");
+
+        glBindVertexArray(cubeMesh.vao);
+        glDrawArrays(GL_TRIANGLES, 0, 36);
+        glBindVertexArray(0);
         check_gl_error("Draw cube");
     }
 
-    // Before drawing the skybox
-    printf("Camera position: (%f, %f, %f)\n", camera.position.x, camera.position.y, camera.position.z);
-    printf("Camera target: (%f, %f, %f)\n", camera.target.x, camera.target.y, camera.target.z);
-
-    GLint currentProgram;
-    glGetIntegerv(GL_CURRENT_PROGRAM, &currentProgram);
-    printf("Current shader program before drawing skybox: %d\n", currentProgram);
-
-    // Draw skybox
+    // Draw skybox last
     glDepthFunc(GL_LEQUAL);
-    check_gl_error("Set depth function to GL_LEQUAL");
-
-    glw_use_shader(&skyboxShader);
+    glUseProgram(skyboxShader.program);
     check_gl_error("Use skybox shader");
-
-    glGetIntegerv(GL_CURRENT_PROGRAM, &currentProgram);
-    printf("Current shader program after drawing skybox: %d\n", currentProgram);
 
     mat4 skyboxView;
     glm_mat4_copy(view, skyboxView);
-    skyboxView[3][0] = skyboxView[3][1] = skyboxView[3][2] = 0.0f; // Remove translation from the view matrix
+    skyboxView[3][0] = skyboxView[3][1] = skyboxView[3][2] = 0.0f; // Remove translation
 
     GLint viewLoc = glGetUniformLocation(skyboxShader.program, "view");
     GLint projLoc = glGetUniformLocation(skyboxShader.program, "projection");
@@ -367,14 +368,35 @@ void main_loop(void) {
     glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture.id);
     check_gl_error("Bind cubemap texture");
 
-    printf("Drawing skybox with %d vertices\n", skyboxMesh.vertex_count);
-    glw_draw_mesh(&skyboxMesh, GL_TRIANGLES);
+    printf("Drawing skybox with VAO: %u\n", skyboxMesh.vao);
+    glBindVertexArray(skyboxMesh.vao);
+    glDrawArrays(GL_TRIANGLES, 0, 36);
+    glBindVertexArray(0);
     check_gl_error("Draw skybox");
 
     glDepthFunc(GL_LESS);
-    check_gl_error("Set depth function back to GL_LESS");
+
+    // Print debug information
+    printf("Camera position: (%f, %f, %f)\n", camera.position.x, camera.position.y, camera.position.z);
+    printf("Camera target: (%f, %f, %f)\n", camera.target.x, camera.target.y, camera.target.z);
+    printf("Skybox texture ID: %u\n", cubemapTexture.id);
+
+    GLint currentProgram;
+    glGetIntegerv(GL_CURRENT_PROGRAM, &currentProgram);
+    printf("Current shader program: %d\n", currentProgram);
+
+
+    // After drawing the skybox
+    GLint viewport[4];
+    glGetIntegerv(GL_VIEWPORT, viewport);
+    printf("Viewport: %d %d %d %d\n", viewport[0], viewport[1], viewport[2], viewport[3]);
+
+    GLboolean depthTest;
+    glGetBooleanv(GL_DEPTH_TEST, &depthTest);
+    printf("Depth test enabled: %s\n", depthTest ? "true" : "false");
 
     EndDrawing();
+
 }
 
 GLWTexture LoadTextureGL(const char * path) {
@@ -432,27 +454,10 @@ GLWTexture LoadCubemapGL(const char* faces[]) {
     for (unsigned int i = 0; i < 6; i++) {
         unsigned char *data = stbi_load(faces[i], &width, &height, &nrChannels, 0);
         if (data) {
-            GLenum format;
-            if (nrChannels == 1)
-                format = GL_RED;
-            else if (nrChannels == 3)
-                format = GL_RGB;
-            else if (nrChannels == 4)
-                format = GL_RGBA;
-            else {
-                printf("Error: Unsupported number of components (%d) in cubemap face %s\n", nrChannels, faces[i]);
-                stbi_image_free(data);
-                continue;
-            }
-
+            GLenum format = (nrChannels == 3) ? GL_RGB : GL_RGBA;
             glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
-            check_gl_error("Load cubemap face");
-
-            printf("Loaded cubemap face %d: %s\n", i, faces[i]);
-            printf("Dimensions: %dx%d\n", width, height);
-            printf("Components: %d\n", nrChannels);
-
             stbi_image_free(data);
+            printf("Loaded cubemap face %d: %s (format: %d)\n", i, faces[i], format);
         } else {
             printf("Cubemap texture failed to load at path: %s\n", faces[i]);
             printf("stbi_failure_reason: %s\n", stbi_failure_reason());
@@ -464,7 +469,6 @@ GLWTexture LoadCubemapGL(const char* faces[]) {
     glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
-    check_gl_error("Set cubemap parameters");
 
     cubemap.target = GL_TEXTURE_CUBE_MAP;
     cubemap.width = width;
@@ -475,6 +479,7 @@ GLWTexture LoadCubemapGL(const char* faces[]) {
     printf("Cubemap created with ID: %u\n", cubemap.id);
     return cubemap;
 }
+
 
 void check_gl_error(const char* operation) {
     GLenum error;

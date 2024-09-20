@@ -85,7 +85,9 @@ static GLint get_uniform_location(GLWShader* shader, const char* name) {
     }
 
     GLint location = glGetUniformLocation(shader->program, name);
-    if (location != -1 && uniform_cache.count < UNIFORM_CACHE_SIZE) {
+    if (location == -1) {
+        glw_log("Warning: Uniform '%s' not found in shader program %u\n", name, shader->program);
+    } else if (uniform_cache.count < UNIFORM_CACHE_SIZE) {
         strncpy(uniform_cache.locations[uniform_cache.count].name, name, MAX_UNIFORM_NAME - 1);
         uniform_cache.locations[uniform_cache.count].location = location;
         uniform_cache.count++;
@@ -97,49 +99,63 @@ static GLint get_uniform_location(GLWShader* shader, const char* name) {
 GLWrapperError glw_set_uniform_1i(GLWShader* shader, const char* name, int value) {
     GLint location = get_uniform_location(shader, name);
     if (location == -1) return GL_WRAPPER_ERROR_SHADER_LINKING;
+    glUseProgram(shader->program);
     glUniform1i(location, value);
+    glw_check_error("glw_set_uniform_1i");
     return GL_WRAPPER_SUCCESS;
 }
 
 GLWrapperError glw_set_uniform_1f(GLWShader* shader, const char* name, float value) {
     GLint location = get_uniform_location(shader, name);
     if (location == -1) return GL_WRAPPER_ERROR_SHADER_LINKING;
+    glUseProgram(shader->program);
     glUniform1f(location, value);
+    glw_check_error("glw_set_uniform_1f");
     return GL_WRAPPER_SUCCESS;
 }
 
 GLWrapperError glw_set_uniform_vec2(GLWShader* shader, const char* name, vec2 value) {
     GLint location = get_uniform_location(shader, name);
     if (location == -1) return GL_WRAPPER_ERROR_SHADER_LINKING;
+    glUseProgram(shader->program);
     glUniform2fv(location, 1, value);
+    glw_check_error("glw_set_uniform_vec2");
     return GL_WRAPPER_SUCCESS;
 }
 
 GLWrapperError glw_set_uniform_vec3(GLWShader* shader, const char* name, vec3 value) {
     GLint location = get_uniform_location(shader, name);
     if (location == -1) return GL_WRAPPER_ERROR_SHADER_LINKING;
+    glUseProgram(shader->program);
     glUniform3fv(location, 1, value);
+    glw_check_error("glw_set_uniform_vec3");
     return GL_WRAPPER_SUCCESS;
 }
 
 GLWrapperError glw_set_uniform_vec4(GLWShader* shader, const char* name, vec4 value) {
     GLint location = get_uniform_location(shader, name);
     if (location == -1) return GL_WRAPPER_ERROR_SHADER_LINKING;
+    glUseProgram(shader->program);
     glUniform4fv(location, 1, value);
+    glw_check_error("glw_set_uniform_vec4");
     return GL_WRAPPER_SUCCESS;
 }
 
 GLWrapperError glw_set_uniform_mat3(GLWShader* shader, const char* name, mat3 value) {
     GLint location = get_uniform_location(shader, name);
     if (location == -1) return GL_WRAPPER_ERROR_SHADER_LINKING;
+    glUseProgram(shader->program);
     glUniformMatrix3fv(location, 1, GL_FALSE, (float*)value);
+    glw_check_error("glw_set_uniform_mat3");
     return GL_WRAPPER_SUCCESS;
 }
 
 GLWrapperError glw_set_uniform_mat4(GLWShader* shader, const char* name, mat4 value) {
     GLint location = get_uniform_location(shader, name);
     if (location == -1) return GL_WRAPPER_ERROR_SHADER_LINKING;
+    glUseProgram(shader->program);
     glUniformMatrix4fv(location, 1, GL_FALSE, (float*)value);
+    glw_check_error("glw_set_uniform_mat4");
     return GL_WRAPPER_SUCCESS;
 }
 
@@ -150,11 +166,11 @@ GLWrapperError glw_create_mesh(float* vertices, int vertex_count, unsigned int* 
 
     glGenVertexArrays(1, &out_mesh->vao);
     glGenBuffers(1, &out_mesh->vbo);
-    
+
     glBindVertexArray(out_mesh->vao);
-    
+
     glBindBuffer(GL_ARRAY_BUFFER, out_mesh->vbo);
-    glBufferData(GL_ARRAY_BUFFER, vertex_count * stride * sizeof(float), vertices, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, vertex_count * stride, vertices, GL_STATIC_DRAW);
 
     if (indices && index_count > 0) {
         glGenBuffers(1, &out_mesh->ebo);
@@ -163,17 +179,23 @@ GLWrapperError glw_create_mesh(float* vertices, int vertex_count, unsigned int* 
     }
 
     // Set up vertex attributes based on stride
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
-
-    if (stride >= 6) {
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride * sizeof(float), (void*)(3 * sizeof(float)));
+    if (stride == 5 * sizeof(float)) {  // For cube (position + texture coordinates)
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void*)0);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, stride, (void*)(3 * sizeof(float)));
         glEnableVertexAttribArray(1);
+    } else if (stride == 3 * sizeof(float)) {  // For skybox (position only)
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void*)0);
+        glEnableVertexAttribArray(0);
     }
 
-    if (stride >= 8) {
-        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride * sizeof(float), (void*)(6 * sizeof(float)));
-        glEnableVertexAttribArray(2);
+    printf("Creating mesh with %d vertices, stride: %d\n", vertex_count, stride);
+    printf("VAO: %u, VBO: %u\n", out_mesh->vao, out_mesh->vbo);
+
+    // Print the first few vertices
+    printf("First few vertices:\n");
+    for (int i = 0; i < 6 && i < vertex_count; i++) {
+        printf("%f %f %f\n", vertices[i*3], vertices[i*3+1], vertices[i*3+2]);
     }
 
     glBindVertexArray(0);
@@ -311,7 +333,7 @@ void glw_camera_get_view_matrix(const GLWCamera* camera, mat4 view) {
     glm_vec3_copy(camera->position, position);
     glm_vec3_copy(camera->front, front);
     glm_vec3_copy(camera->up, up);
-    
+
     glm_vec3_add(position, front, center);
     glm_lookat(position, center, up, view);
 }
